@@ -12,9 +12,9 @@ interference remains robust, the phase synchrony among different brain regions f
 Claim:
 
 These results suggest that brain dynamics may operate at a unique interface between quantum-like interference
-and classical phase coherence. In other words, the brain might be continually maintaining a rich, interference-drive
-n state (as shown by high Wigner negativity) while simultaneously exhibiting periods of more synchronized, classical behavio
-r (reflected in the PLV fluctuations). This duality could be interpreted as a signature of the brain’s complex information
+and classical phase coherence. In other words, the brain might be continually maintaining a rich, interference-driven
+state (as shown by high Wigner negativity) while simultaneously exhibiting periods of more synchronized, classical behavior
+(reflected in the PLV fluctuations). This duality could be interpreted as a signature of the brain’s complex information
 processing—a dynamic balance that allows for both flexible, probabilistic operations and stable, synchronized activity.
 
 # Overview
