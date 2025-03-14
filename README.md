@@ -1,5 +1,7 @@
 ## EEG Wigner Viewer (Quantum Decoherence Simulator)
 
+[![striations](striations.jpg)](readme.md)
+
 # Results and what it might mean according to ChatGPT: 
 
 Observation:
