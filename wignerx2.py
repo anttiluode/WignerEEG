@@ -2,7 +2,7 @@
 import os
 import numpy as np
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, scrolledtext
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -218,15 +218,36 @@ class EEGProcessor:
         self.sfreq = 0
         self.duration = 0
         self.window_size = 2.0
+        self.channel_types = {}
 
     def load_file(self, filepath: str) -> bool:
         try:
             self.raw = mne.io.read_raw_edf(filepath, preload=True, verbose=False)
             self.sfreq = self.raw.info['sfreq']
             self.duration = self.raw.n_times / self.sfreq
+            
+            # Try to determine channel types
+            self.channel_types = {}
+            for ch_name in self.raw.ch_names:
+                if "EEG" in ch_name.upper():
+                    self.channel_types[ch_name] = "EEG"
+                elif any(sensor in ch_name.upper() for sensor in ["TEMP", "TEMPERATURE"]):
+                    self.channel_types[ch_name] = "Temperature"
+                elif any(sensor in ch_name.upper() for sensor in ["EMG", "MUSC"]):
+                    self.channel_types[ch_name] = "EMG"
+                elif any(sensor in ch_name.upper() for sensor in ["EOG", "EYE"]):
+                    self.channel_types[ch_name] = "EOG"
+                elif any(sensor in ch_name.upper() for sensor in ["ECG", "HEART", "CARD"]):
+                    self.channel_types[ch_name] = "ECG"
+                elif "STRENGTH" in ch_name.upper() or "SIGNAL" in ch_name.upper():
+                    self.channel_types[ch_name] = "Signal Strength"
+                else:
+                    self.channel_types[ch_name] = "Other"
+            
             logging.info(f"Loaded EEG file: {filepath}")
             logging.info(f"Sampling frequency: {self.sfreq} Hz, Duration: {self.duration:.2f} s")
             logging.info(f"Channels: {self.raw.ch_names}")
+            logging.info(f"Channel types: {self.channel_types}")
             return True
         except Exception as e:
             logging.error(f"Failed to load EEG file: {e}")
@@ -236,6 +257,14 @@ class EEGProcessor:
         if self.raw:
             return self.raw.ch_names
         return []
+    
+    def get_channel_types(self):
+        if not self.channel_types:
+            return set(["Unknown"])
+        return set(self.channel_types.values())
+
+    def get_channels_by_type(self, channel_type):
+        return [ch for ch, tp in self.channel_types.items() if tp == channel_type]
 
     def get_data(self, channels, start_time: float) -> dict:
         if self.raw is None:
@@ -265,6 +294,103 @@ class EEGProcessor:
             return {}
 
 # -------------------------------
+# Channel Selection Dialog
+# -------------------------------
+class ChannelSelectorDialog:
+    def __init__(self, parent, channel_types, initial_selection=None):
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Channel Type Selection")
+        self.dialog.geometry("400x400")
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        self.channel_types = channel_types
+        self.checkboxes = {}
+        self.vars = {}
+        self.result = initial_selection or set()
+        
+        # Create UI
+        main_frame = ttk.Frame(self.dialog, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(main_frame, text="Select channel types to include in coherence calculation:").pack(anchor="w", pady=(0, 10))
+        
+        # Scrollable frame for checkboxes
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Create a checkbox for each channel type
+        for ch_type in sorted(channel_types):
+            var = tk.BooleanVar(value=ch_type in self.result)
+            self.vars[ch_type] = var
+            checkbox = ttk.Checkbutton(
+                scrollable_frame, 
+                text=ch_type,
+                variable=var,
+                command=lambda t=ch_type: self.toggle_selection(t)
+            )
+            checkbox.pack(anchor="w", pady=2)
+            self.checkboxes[ch_type] = checkbox
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill="x", pady=(10, 0))
+        
+        ttk.Button(button_frame, text="Select All", command=self.select_all).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Deselect All", command=self.deselect_all).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="EEG Only", command=self.eeg_only).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="OK", command=self.on_ok).pack(side="right", padx=5)
+        ttk.Button(button_frame, text="Cancel", command=self.on_cancel).pack(side="right", padx=5)
+        
+        self.dialog.protocol("WM_DELETE_WINDOW", self.on_cancel)
+        
+    def toggle_selection(self, channel_type):
+        if self.vars[channel_type].get():
+            self.result.add(channel_type)
+        else:
+            self.result.discard(channel_type)
+    
+    def select_all(self):
+        for ch_type, var in self.vars.items():
+            var.set(True)
+            self.result.add(ch_type)
+    
+    def deselect_all(self):
+        for ch_type, var in self.vars.items():
+            var.set(False)
+        self.result.clear()
+    
+    def eeg_only(self):
+        self.deselect_all()
+        for ch_type in self.channel_types:
+            if ch_type == "EEG":
+                self.vars[ch_type].set(True)
+                self.result.add(ch_type)
+    
+    def on_ok(self):
+        self.dialog.destroy()
+    
+    def on_cancel(self):
+        self.result = None
+        self.dialog.destroy()
+    
+    def show(self):
+        self.dialog.wait_window()
+        return self.result
+
+# -------------------------------
 # Main EEG Wigner Viewer
 # -------------------------------
 class EEGWignerViewer:
@@ -273,7 +399,7 @@ class EEGWignerViewer:
       - Loads an EEG file
       - Displays EEG signal + Wigner transform
       - Plays EEG data (via main-thread scheduling)
-      - Computes 'quantum-inspired' coherence
+      - Computes 'quantum-inspired' coherence with channel type filtering
     """
     def __init__(self, root):
         self.root = root
@@ -289,6 +415,9 @@ class EEGWignerViewer:
         self.auto_wigner = tk.BooleanVar(value=False)
         self.playing = False
         self.speed_var = tk.DoubleVar(value=1.0)
+
+        # Selected channel types for coherence calculation
+        self.selected_channel_types = set(["EEG"])
 
         self.last_wigner_time = 0
         self.wigner_interval = 0.5
@@ -368,9 +497,20 @@ class EEGWignerViewer:
         ttk.Button(button_frame, text="Save Figure", command=self.save_figure).pack(
             side=tk.LEFT, padx=5, pady=5
         )
-        ttk.Button(button_frame, text="Compute Coherence", command=self.compute_coherence).pack(
-            side=tk.LEFT, padx=5, pady=5
+        
+        coherence_frame = ttk.Frame(button_frame)
+        coherence_frame.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        ttk.Button(coherence_frame, text="Compute Coherence", command=self.compute_coherence).pack(
+            side=tk.LEFT
         )
+        ttk.Button(coherence_frame, text="Channel Types", command=self.select_channel_types).pack(
+            side=tk.LEFT, padx=5
+        )
+        
+        # Add a label to show currently selected channel types
+        self.ch_types_label = ttk.Label(button_frame, text="Selected types: EEG")
+        self.ch_types_label.pack(side=tk.LEFT, padx=5, pady=5)
 
         # Visualization
         self.fig, (self.ax1, self.ax2) = plt.subplots(2, 1, figsize=(10, 8))
@@ -391,6 +531,23 @@ class EEGWignerViewer:
             logging.warning(f"tight_layout error on init: {e}")
 
         self.canvas.draw()
+
+    def select_channel_types(self):
+        if not self.eeg.raw:
+            messagebox.showwarning("No Data", "Please load an EEG file first")
+            return
+        
+        channel_types = self.eeg.get_channel_types()
+        selector = ChannelSelectorDialog(self.root, channel_types, self.selected_channel_types)
+        result = selector.show()
+        
+        if result is not None:
+            self.selected_channel_types = result
+            self.update_channel_types_label()
+    
+    def update_channel_types_label(self):
+        types_str = ", ".join(sorted(self.selected_channel_types)) if self.selected_channel_types else "None"
+        self.ch_types_label.config(text=f"Selected types: {types_str}")
 
     def toggle_auto_wigner(self):
         if self.auto_wigner.get():
@@ -457,6 +614,15 @@ class EEGWignerViewer:
             self.time_scale.set(0)
             self.time_entry.delete(0, tk.END)
             self.time_entry.insert(0, "0.0")
+
+            # Update channel types label (set to EEG by default)
+            channel_types = self.eeg.get_channel_types()
+            if "EEG" in channel_types:
+                self.selected_channel_types = set(["EEG"])
+            else:
+                # If no EEG channels, select the first available type
+                self.selected_channel_types = set([next(iter(channel_types))])
+            self.update_channel_types_label()
 
             self.update_signal_plot()
         else:
@@ -585,31 +751,98 @@ class EEGWignerViewer:
         if not self.eeg.raw:
             messagebox.showwarning("No Data", "Please load an EEG file first")
             return
-
-        all_channels = self.eeg.get_channels()
-        if len(all_channels) < 2:
-            messagebox.showwarning("Not Enough Channels", "Need at least 2 channels for coherence analysis")
+        
+        if not self.selected_channel_types:
+            messagebox.showwarning("No Channel Types", "Please select at least one channel type")
             return
 
-        used_channels = all_channels[:4]
+        # Get all channels of the selected types
+        selected_channels = []
+        for ch_type in self.selected_channel_types:
+            channels = self.eeg.get_channels_by_type(ch_type)
+            selected_channels.extend(channels)
+        
+        if len(selected_channels) < 2:
+            messagebox.showwarning("Not Enough Channels", 
+                                  f"Need at least 2 channels of types {', '.join(self.selected_channel_types)}")
+            return
+
+        # If in auto-wigner mode, only use the selected channel if it's in the selected types
+        if self.auto_wigner.get():
+            ch1 = self.selected_ch1.get()
+            ch_type = self.eeg.channel_types.get(ch1, "Unknown")
+            if ch_type not in self.selected_channel_types:
+                messagebox.showwarning("Invalid Channel", 
+                                      f"Selected channel {ch1} is not of the selected types")
+                return
+            used_channels = [ch1]
+        else:
+            # If in cross-wigner mode, use both selected channels if they're of the right types
+            ch1 = self.selected_ch1.get()
+            ch2 = self.selected_ch2.get()
+            ch1_type = self.eeg.channel_types.get(ch1, "Unknown")
+            ch2_type = self.eeg.channel_types.get(ch2, "Unknown")
+            
+            # Build the list of channels to use
+            used_channels = []
+            if ch1_type in self.selected_channel_types:
+                used_channels.append(ch1)
+            if ch2_type in self.selected_channel_types:
+                used_channels.append(ch2)
+                
+            if len(used_channels) < 2:
+                # If we don't have 2 channels from selected types, add more from the selected types
+                for ch in selected_channels:
+                    if ch not in used_channels:
+                        used_channels.append(ch)
+                        if len(used_channels) >= 2:
+                            break
+
         time_val = self.current_time.get()
         data_dict = self.eeg.get_data(used_channels, time_val)
         if not data_dict:
             messagebox.showwarning("No Data", "Failed to get EEG data for coherence")
             return
 
+        # Create results dialog
+        result_dialog = tk.Toplevel(self.root)
+        result_dialog.title("Neural Coherence Results")
+        result_dialog.geometry("600x500")
+        result_dialog.transient(self.root)
+        result_dialog.grab_set()
+        
+        # Create scrollable text widget for results
+        result_text = scrolledtext.ScrolledText(result_dialog, wrap=tk.WORD, width=70, height=25)
+        result_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Compute coherence and display results
         coherence_index, details = self.coherence_calc.compute_coherence_index(data_dict, fs=self.eeg.sfreq)
-        msg = f"Coherence Index: {coherence_index:.4f}\n\nDetails:\n"
+        
+        result_text.insert(tk.END, f"Coherence Index: {coherence_index:.4f}\n\n")
+        result_text.insert(tk.END, f"Channel Pairs Analysis:\n")
+        result_text.insert(tk.END, f"{'Channel Pair':<20} {'Negativity':<15} {'PLV':<15}\n")
+        result_text.insert(tk.END, f"{'-'*50}\n")
+        
         for pair, vals in details.items():
             if isinstance(vals, dict) and 'negativity' in vals:
-                msg += f"  {pair}: negativity={vals['negativity']:.4f}, PLV={vals['plv']:.4f}\n"
+                result_text.insert(tk.END, f"{pair:<20} {vals['negativity']:.4f}{' '*10} {vals['plv']:.4f}\n")
+        
+        result_text.insert(tk.END, f"\nSummary Statistics:\n")
+        result_text.insert(tk.END, f"{'-'*50}\n")
         if "avg_negativity" in details:
-            msg += f"\nAvg Negativity: {details['avg_negativity']:.4f}"
+            result_text.insert(tk.END, f"Average Negativity: {details['avg_negativity']:.4f}\n")
         if "avg_plv" in details:
-            msg += f"\nAvg PLV: {details['avg_plv']:.4f}"
-        msg += f"\n\ncoherence_index = {details.get('coherence_index', 0):.4f}"
-
-        messagebox.showinfo("Neural Coherence", msg)
+            result_text.insert(tk.END, f"Average PLV: {details['avg_plv']:.4f}\n")
+        result_text.insert(tk.END, f"Coherence Index: {details.get('coherence_index', 0):.4f}\n")
+        
+        result_text.insert(tk.END, f"\nChannel Types Used: {', '.join(sorted(self.selected_channel_types))}\n")
+        result_text.insert(tk.END, f"Channels Included: {', '.join(sorted(used_channels))}\n")
+        
+        # Make the text widget read-only
+        result_text.config(state=tk.DISABLED)
+        
+        # Add close button
+        ttk.Button(result_dialog, text="Close", command=result_dialog.destroy).pack(pady=10)
 
     def save_figure(self):
         filepath = filedialog.asksaveasfilename(
