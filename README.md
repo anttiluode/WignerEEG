@@ -11,14 +11,6 @@ regions—what we term “Wigner negativity”—which indicates the presence of
 At the same time, the Phase Locking Value (PLV) between channels varies over time, suggesting that while the underlying
 interference remains robust, the phase synchrony among different brain regions fluctuates.
 
-Claim:
-
-These results suggest that brain dynamics may operate at a unique interface between quantum-like interference
-and classical phase coherence. In other words, the brain might be continually maintaining a rich, interference-driven
-state (as shown by high Wigner negativity) while simultaneously exhibiting periods of more synchronized, classical behavior
-(reflected in the PLV fluctuations). This duality could be interpreted as a signature of the brain’s complex information
-processing—a dynamic balance that allows for both flexible, probabilistic operations and stable, synchronized activity.
-
 # Overview
 
 This Python script is an experimental tool for visualizing EEG data and exploring a quantum-inspired analysis of brain signals. The tool:
@@ -110,4 +102,4 @@ Together, these metrics provide a novel way to assess the dynamics of EEG signal
 # Disclaimer
 
 This is an experimental, proof-of-concept tool. The "quantum-inspired" coherence metric is a novel approach that uses concepts from quantum
-information theory, but it does not imply that the brain functions as a quantum computer. Use the results as an exploratory tool rather than definitive scientific evidence.
+information theory. Use the results as an exploratory tool rather than definitive scientific evidence.
